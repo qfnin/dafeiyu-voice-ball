@@ -1,0 +1,21 @@
+{
+  "project": "da-fei-yu-1",
+  "diameter": 360,
+  "x": null,
+  "y": null,
+  "voice": "zh-CN-XiaoyiNeural",
+  "rate": "+10%",
+  "pitch": "+30Hz",
+  "zoom": 1.52,
+  "anchorY": 0.46,
+  "max_chars": 300,
+  "topmost": true,
+  "hardCircle": false,
+  "whisper": "base",
+  "silence_rms": 35,
+  "input_device": null,
+  "silence_sec": 0.8,
+  "max_record_sec": 15,
+  "llm_backend": "ollama",
+  "model": "qwen2.5-coder:7b"
+}

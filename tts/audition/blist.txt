@@ -1,0 +1,3 @@
+file 'D:/DS工作区预览版/悬浮球/tts/audition/b1.wav'
+file 'D:/DS工作区预览版/悬浮球/tts/audition/b2.wav'
+file 'D:/DS工作区预览版/悬浮球/tts/audition/b3.wav'

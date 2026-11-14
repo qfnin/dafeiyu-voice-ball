@@ -1,0 +1,17 @@
+# 运行时产物（全部落在仓库目录内，不进 git）
+cache/
+logs/
+models/
+
+# 依赖
+shell/node_modules/
+app/__pycache__/
+
+# 本地配置（复制 config.example.json 改名使用）
+config.json
+
+# 运行产生的音频缓存
+tts/cache-*.mp3
+tts/last.mp3
+tts/reply.mp3
+tts/sapi-*.wav

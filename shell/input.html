@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>跟悬浮球说话</title>
+<style>
+  html,body{margin:0;height:100%;background:#141a2e;color:#e6ecff;font-family:system-ui,sans-serif;overflow:hidden}
+  .wrap{padding:12px 14px}
+  label{display:block;font-size:12px;color:#9fb3e6;margin-bottom:6px}
+  .row{display:flex;gap:8px}
+  input{flex:1;padding:9px 11px;border-radius:8px;border:1px solid #33406b;background:#0f1424;color:#e6ecff;font-size:14px;outline:none}
+  input:focus{border-color:#6d8ff0;box-shadow:0 0 0 3px rgba(109,143,240,.18)}
+  button{padding:9px 16px;border-radius:8px;border:0;background:#4d6fe8;color:#fff;font-size:14px;cursor:pointer}
+  button.ghost{background:#232c4a}
+  button:hover{filter:brightness(1.08)}
+  .hint{margin-top:6px;font-size:11px;color:#7f91c4}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <label>让悬浮球说这句话（回车发送 · Esc 取消）</label>
+    <div class="row">
+      <input id="text" placeholder="比如：大家好，我是大肥鱼1号～" autocomplete="off" />
+      <button id="say">说</button>
+      <button id="cancel" class="ghost">取消</button>
+    </div>
+    <div class="hint" id="hint">也可以右键球选「朗读剪贴板」</div>
+  </div>
+<script>
+  const input = document.querySelector('#text');
+  const hint = document.querySelector('#hint');
+  const log = (m) => { try { console.log(m); } catch (e) {} };
+
+  function send() {
+    const t = input.value.trim();
+    log('send 被调用，内容长度=' + t.length);
+    if (!t) { hint.textContent = '请先输入内容'; return; }
+    hint.textContent = '正在合成语音…';
+    window.ballShell.speak(t).then((u) => {
+      log('speak 返回: ' + (u ? ('ok ' + u.length) : 'empty'));
+      hint.textContent = u ? '已发送，听她说～' : '合成失败';
+      setTimeout(() => window.ballShell.closeInput(), 300);
+    }).catch((e) => {
+      log('speak 出错: ' + e.message);
+      hint.textContent = '出错：' + e.message;
+    });
+  }
+
+  document.querySelector('#say').addEventListener('click', send);
+  document.querySelector('#cancel').addEventListener('click', () => window.ballShell.closeInput());
+  input.addEventListener('keydown', (e) => {
+    log('keydown: ' + e.key);
+    if (e.key === 'Enter') { e.preventDefault(); send(); }
+    if (e.key === 'Escape') window.ballShell.closeInput();
+  });
+  window.addEventListener('pywebviewready', () => input.focus());
+  setTimeout(() => { input.focus(); log('已聚焦输入框'); }, 150);
+</script>
+</body>
+</html>
