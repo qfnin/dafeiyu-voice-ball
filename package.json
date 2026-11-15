@@ -1,0 +1,50 @@
+{
+  "name": "dafeiyu-voice-ball",
+  "version": "1.0.0",
+  "description": "DaFeiYu Voice Ball: floating desktop voice companion for DeepSeek Harness - click to say one sentence, local Whisper ASR + edge-tts answers over a live RuiC-2D character. 点一下说一句，答一句的桌面语音球",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "voice",
+    "voice-assistant",
+    "desktop-pet",
+    "floating-widget",
+    "whisper",
+    "edge-tts",
+    "cordis"
+  ],
+  "homepage": "https://github.com/qfnin/dafeiyu-voice-ball#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qfnin/dafeiyu-voice-ball.git"
+  },
+  "bugs": {
+    "url": "https://github.com/qfnin/dafeiyu-voice-ball/issues"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "files": [
+    "lib",
+    "scripts",
+    "cordis.patch.yml",
+    "app",
+    "shell",
+    "persona",
+    "assets",
+    "tts",
+    "config.example.json",
+    "大肥鱼语音球.vbs",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

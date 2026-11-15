@@ -1,0 +1,7 @@
+# 大肥鱼语音球 · bundle patch —— 把宿主侧插件挂进 DSH 配置树
+# 安装后 DSH 启动时按 bundle 层叠把本文件叠进配置；本插件激活时拉起
+# scripts/ball-manager.mjs（首次自动配置环境 + 启动语音桥和悬浮球窗口）。
+
+- insert:
+    - id: dafeiyu-voice-ball
+      name: 'dafeiyu-voice-ball'

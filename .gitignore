@@ -3,6 +3,10 @@ cache/
 logs/
 models/
 
+# 插件模式：首次运行克隆的角色引擎与环境标记
+RuiC-2D/
+.setup-done
+
 # 依赖
 shell/node_modules/
 app/__pycache__/
