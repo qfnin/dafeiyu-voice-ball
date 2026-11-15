@@ -1,10 +1,11 @@
-"""语音对话桥（通话版）
+"""语音对话桥（单句 + 通话双模式）
 
 接口（只监听 127.0.0.1:8798）：
   GET  /ping            健康检查
   GET  /status          通话状态
-  POST /call/start      接通（开始持续对话循环）
-  POST /call/stop       挂断
+  POST /ask/start       单句模式：听一句 -> 答一句 -> 自动回待机（球上点一下用这个）
+  POST /call/start      接通（开始持续对话循环，备用）
+  POST /call/stop       挂断（也用来中断单句）
   GET  /next            外壳轮询：有新回答就返回 {url, reply, text}
   POST /say             直接说一句（调试）
 """
@@ -50,7 +51,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/ping"):
-            return self._send({"ok": True, "voice": ve.cfg().get("voice"), "mode": "call"})
+            return self._send({"ok": True, "voice": ve.cfg().get("voice"), "mode": "once"})
         if self.path.startswith("/status"):
             return self._send(ve.status())
         if self.path.startswith("/next"):
@@ -66,6 +67,9 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             data = {}
 
+        if self.path.startswith("/ask/start"):
+            log("单句对话")
+            return self._send(ve.ask_once())
         if self.path.startswith("/call/start"):
             log("接通")
             return self._send(ve.call_start())

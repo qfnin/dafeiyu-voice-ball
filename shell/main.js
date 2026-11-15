@@ -284,7 +284,7 @@ function voicePost(pathname, body) {
   });
 }
 
-// 开始/停止通话（像打电话：接通知后一直聊，挂断才停）
+// 单句模式：点一下 = 听一句答一句，答完自动回待机，不用再点挂断
 let callTimer = null;
 let onCall = false;
 
@@ -304,15 +304,15 @@ function voiceGet(pathname) {
 }
 
 async function startCall() {
-  if (!win) { log('[通话] 没有窗口，无法接通'); return; }
-  if (onCall) { log('[通话] 已经在通话中，忽略重复接通'); return; }
+  if (!win) { log('[语音] 没有窗口，无法开始'); return; }
+  if (onCall) { log('[语音] 上一句还没结束，忽略重复点击'); return; }
+  const r = await voicePost('/ask/start', {});
+  if (r && r.ok === false) { log('[语音] 忙，忽略:', JSON.stringify(r)); return; }
   onCall = true;
-  log('[通话] 接通');
+  log('[语音] 单句开始');
   win.webContents.send('voice-state', { state: 'listening', onCall: true });
-  const r = await voicePost('/call/start', {});
-  log('[通话] 后端:', JSON.stringify(r));
 
-  // 持续轮询：状态 + 新回答
+  // 轮询：状态 + 新回答；引擎答完一轮会自动回 idle，此时结束本次
   if (callTimer) clearInterval(callTimer);
   callTimer = setInterval(async () => {
     if (!onCall) return;
@@ -322,12 +322,18 @@ async function startCall() {
         state: s.phase === 'idle_wait' ? 'listening' : s.phase,
         text: s.last_text || '',
         turns: s.turns || 0,
-        onCall: true,
+        onCall: s.on_call !== false,
       });
+      if (s.on_call === false || s.phase === 'idle') {
+        log('[语音] 单句结束');
+        clearInterval(callTimer); callTimer = null;
+        onCall = false;
+        win.webContents.send('voice-state', { state: 'idle', onCall: false });
+      }
     }
     const next = await voiceGet('/next');
     if (next && next.url) {
-      log('[通话] 收到回答:', (next.reply || '').slice(0, 30));
+      log('[语音] 收到回答:', (next.reply || '').slice(0, 30));
       win.webContents.send('speak', next.url);
     }
   }, 700);
@@ -375,8 +381,8 @@ function setStartup(on) {
 
 function buildMenu() {
   const items = [
-    { label: '接通（开始通话）', click: () => { log('[菜单] 接通'); startCall(); } },
-    { label: '挂断', click: () => { log('[菜单] 挂断'); stopCall(); } },
+    { label: '说一句话', click: () => { log('[菜单] 说一句话'); startCall(); } },
+    { label: '停止（结束本轮）', click: () => { log('[菜单] 停止'); stopCall(); } },
     { type: 'separator' },
     { label: '朗读剪贴板', click: () => { log('[菜单] 朗读剪贴板'); speak(clipboard.readText()); } },
     { label: '输入文字说话…', click: () => { log('[菜单] 输入文字说话'); openInput(); } },

@@ -103,6 +103,7 @@ _synth_futures: list = []      # 本轮待取回的合成任务
 _whisper = None
 _loop_thread: threading.Thread | None = None
 _stop_flag = threading.Event()
+_single_running = False    # 单句模式（按一下说一句）正在进行
 
 
 def log(*parts):
@@ -686,6 +687,75 @@ def speak_sentences_parallel(text: str) -> list[str]:
     return urls
 
 
+def _reply_to_pcm(pcm: bytes) -> bool:
+    """识别一句 → 回答 → 合成 → 等播完。返回是否完成了一轮有效回答"""
+    state["phase"] = "thinking"
+    wav = _save_wav(pcm, REC_DIR / "turn.wav")
+    try:
+        text = transcribe(wav)
+    except Exception as exc:
+        log("识别失败:", exc)
+        state["error"] = f"识别失败：{exc}"
+        return False
+    text = (text or "").strip()
+    if not text:
+        log("没听清")
+        return False
+    log(f"听到: {text}")
+    state["last_text"] = text
+
+    # 回答（流式：一边生成一边合成一边播，第一句不用等整段）
+    try:
+        state["phase"] = "speaking"
+        played: list[str] = []
+        first_audio_at = [None]
+
+        def on_sentence(sent: str):
+            if _stop_flag.is_set():
+                return
+            # 关键：模型还在生成下一句时，这一句已经在后台合成了
+            fut = get_synth_pool().submit(speak_text, sent)
+            _synth_futures.append(fut)
+            played.append(sent)
+            log(f"  [{(time.time()-t_round)*1000:.0f}ms] 提交合成: {sent[:18]}")
+
+        t_round = time.time()
+        reply = ask_llm_stream(text, on_sentence)
+        if not reply:
+            return False
+        log(f"  [{(time.time()-t_round)*1000:.0f}ms] 模型完成: {reply[:30]}")
+        state["last_reply"] = reply
+        state["turns"] += 1
+
+        # 按顺序取回合成结果（此时多半已经好了）
+        state["phase"] = "speaking"
+        total = 0.0
+        for i, fut in enumerate(_synth_futures):
+            if _stop_flag.is_set():
+                break
+            try:
+                url = fut.result(timeout=30)
+                with _lock:
+                    _pending_audio.append(url)
+                if i == 0:
+                    log(f"  [{(time.time()-t_round)*1000:.0f}ms] 第一句音频就绪 ← 用户开始听到")
+                total += 1.5
+            except Exception as exc:
+                log("  合成失败:", exc)
+        _synth_futures.clear()
+        # 等这些句子播完（期间不采集，避免自听）
+        t0 = time.time()
+        while time.time() - t0 < total and not _stop_flag.is_set():
+            time.sleep(0.1)
+        # 多等一会儿，等扬声器余音散掉，别把回音当成下一句
+        time.sleep(0.6)
+        return True
+    except Exception as exc:
+        log("回答/合成失败:", exc)
+        state["error"] = str(exc)
+        return False
+
+
 def _call_loop():
     """一直转：听 -> 想 -> 说 -> 再听，直到挂断"""
     log("=== 通话开始 ===")
@@ -711,71 +781,8 @@ def _call_loop():
             continue
         empty_rounds = 0
         state["auto_stopped"] = True
-
-        # --- 识别
-        state["phase"] = "thinking"
-        wav = _save_wav(pcm, REC_DIR / "turn.wav")
-        try:
-            text = transcribe(wav)
-        except Exception as exc:
-            log("识别失败:", exc)
-            state["error"] = f"识别失败：{exc}"
-            continue
-        text = (text or "").strip()
-        if not text:
-            log("没听清，继续听")
-            continue
-        log(f"听到: {text}")
-        state["last_text"] = text
-
-        # --- 回答（流式：一边生成一边合成一边播，第一句不用等整段）
-        try:
-            state["phase"] = "speaking"
-            played: list[str] = []
-            first_audio_at = [None]
-
-            def on_sentence(sent: str):
-                if _stop_flag.is_set():
-                    return
-                # 关键：模型还在生成下一句时，这一句已经在后台合成了
-                fut = get_synth_pool().submit(speak_text, sent)
-                _synth_futures.append(fut)
-                played.append(sent)
-                log(f"  [{(time.time()-t_round)*1000:.0f}ms] 提交合成: {sent[:18]}")
-
-            t_round = time.time()
-            reply = ask_llm_stream(text, on_sentence)
-            if not reply:
-                continue
-            log(f"  [{(time.time()-t_round)*1000:.0f}ms] 模型完成: {reply[:30]}")
-            state["last_reply"] = reply
-            state["turns"] += 1
-
-            # 按顺序取回合成结果（此时多半已经好了）
-            state["phase"] = "speaking"
-            total = 0.0
-            for i, fut in enumerate(_synth_futures):
-                if _stop_flag.is_set():
-                    break
-                try:
-                    url = fut.result(timeout=30)
-                    with _lock:
-                        _pending_audio.append(url)
-                    if i == 0:
-                        log(f"  [{(time.time()-t_round)*1000:.0f}ms] 第一句音频就绪 ← 用户开始听到")
-                    total += 1.5
-                except Exception as exc:
-                    log("  合成失败:", exc)
-            _synth_futures.clear()
-            # 等这些句子播完（期间不采集，避免自听）
-            t0 = time.time()
-            while time.time() - t0 < total and not _stop_flag.is_set():
-                time.sleep(0.1)
-            # 多等一会儿，等扬声器余音散掉，别把回音当成下一句
-            time.sleep(0.6)
-        except Exception as exc:
-            log("回答/合成失败:", exc)
-            state["error"] = str(exc)
+        # --- 想 + 说
+        _reply_to_pcm(pcm)
 
     state["phase"] = "idle"
     state["on_call"] = False
@@ -804,6 +811,49 @@ def call_stop():
     state["phase"] = "idle"
     log("挂断")
     return {"ok": True}
+
+
+def _single_loop():
+    """单句模式：听一句 -> 答一句 -> 结束（回到待机，等下一次点击）"""
+    global _single_running
+    log("=== 单句模式开始 ===")
+    try:
+        state["phase"] = "listening"
+        state["auto_stopped"] = False
+        pcm = _record_once()
+        if _stop_flag.is_set():
+            return
+        if not pcm or len(pcm) < 16000 * 0.25:
+            log("单句模式：没听到声音，本轮结束")
+            return
+        state["auto_stopped"] = True
+        # --- 想 + 说（答完本轮就结束）
+        _reply_to_pcm(pcm)
+    finally:
+        with _lock:
+            _single_running = False
+        state["phase"] = "idle"
+        state["on_call"] = False
+        state["recording"] = False
+        log("=== 单句结束 ===")
+
+
+def ask_once():
+    """按一下说一句：开始一轮「听一句答一句」，答完自动回到待机"""
+    global _single_running, _loop_thread
+    with _lock:
+        if state["on_call"] or _single_running:
+            log("单句模式：上一轮还没结束，忽略本次点击")
+            return {"ok": False, "busy": True}
+        _stop_flag.clear()
+        state["on_call"] = True
+        state["phase"] = "listening"
+        state["error"] = ""
+        _single_running = True
+        _loop_thread = threading.Thread(target=_single_loop, daemon=True)
+        _loop_thread.start()
+    log("单句模式：已接受点击，开始听")
+    return {"ok": True, "mode": "once"}
 
 
 def status() -> dict:
